@@ -1,0 +1,11 @@
+# Playback state and local history
+/watch_later/
+/watch_history/
+/state/
+/cache/
+/script-opts/volume_state.txt
+/script-opts/file_browser_favourites.txt
+/file_browser-last_opened_directory
+
+# Runtime logs
+*.log

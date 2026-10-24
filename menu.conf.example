@@ -1,0 +1,40 @@
+# ============================================================
+# mpv 右键上下文菜单 (menu.conf)
+# ------------------------------------------------------------
+# 语法说明（由 mpv 内置 select.lua 解析）：
+#   · 每行一项，用 TAB 分隔：第一列=标题，第二列=命令或内置动态菜单
+#   · 内置动态菜单（自动列出当前内容）：
+#       $playlist         播放列表
+#       $audio-tracks     音轨
+#       $sub-tracks       字幕
+#       $video-tracks     视频轨
+#       $secondary-sub-tracks  次字幕
+#       $chapters         章节
+#       $editions         版本(多版本MKV)
+#       $audio-devices    音频输出设备
+#       $profiles         配置(profile)
+#   · 单独一行的 TAB 或空行 = 分隔线
+#   · 想改菜单，直接编辑本文件，保存后重开 mpv 生效
+# ============================================================
+
+暂停/继续	cycle pause
+全屏	cycle fullscreen
+窗口置顶	cycle ontop
+
+播放列表	$playlist
+音轨	$audio-tracks
+字幕	$sub-tracks
+视频轨	$video-tracks
+章节	$chapters
+版本	$editions
+
+截图(带字幕)	osd-msg screenshot video
+截图(无字幕)	osd-msg screenshot video no-sub
+截取窗口画面	osd-msg screenshot window
+
+倍速 x2	multiply speed 2.0
+倍速 x0.5	multiply speed 0.5
+循环本集	cycle-values loop-file inf no
+
+显示信息	cycle-values osd-level 3 1
+退出播放器	quit
