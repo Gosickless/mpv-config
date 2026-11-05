@@ -1,0 +1,144 @@
+{
+  "anime4k-1": {
+    "title": "Anime4K A",
+    "shaders": [
+      "~~/shaders/Anime4K_Clamp_Highlights.glsl",
+      "~~/shaders/Anime4K_Restore_CNN_VL.glsl",
+      "~~/shaders/Anime4K_Upscale_CNN_x2_VL.glsl",
+      "~~/shaders/Anime4K_AutoDownscalePre_x2.glsl",
+      "~~/shaders/Anime4K_AutoDownscalePre_x4.glsl",
+      "~~/shaders/Anime4K_Upscale_CNN_x2_M.glsl"
+    ]
+  },
+  "anime4k-2": {
+    "title": "Anime4K B",
+    "shaders": [
+      "~~/shaders/Anime4K_Clamp_Highlights.glsl",
+      "~~/shaders/Anime4K_Restore_CNN_Soft_VL.glsl",
+      "~~/shaders/Anime4K_Upscale_CNN_x2_VL.glsl",
+      "~~/shaders/Anime4K_AutoDownscalePre_x2.glsl",
+      "~~/shaders/Anime4K_AutoDownscalePre_x4.glsl",
+      "~~/shaders/Anime4K_Upscale_CNN_x2_M.glsl"
+    ]
+  },
+  "anime4k-3": {
+    "title": "Anime4K C",
+    "shaders": [
+      "~~/shaders/Anime4K_Clamp_Highlights.glsl",
+      "~~/shaders/Anime4K_Upscale_Denoise_CNN_x2_VL.glsl",
+      "~~/shaders/Anime4K_AutoDownscalePre_x2.glsl",
+      "~~/shaders/Anime4K_AutoDownscalePre_x4.glsl",
+      "~~/shaders/Anime4K_Upscale_CNN_x2_M.glsl"
+    ]
+  },
+  "anime4k-4": {
+    "title": "Anime4K A+A",
+    "shaders": [
+      "~~/shaders/Anime4K_Clamp_Highlights.glsl",
+      "~~/shaders/Anime4K_Restore_CNN_VL.glsl",
+      "~~/shaders/Anime4K_Upscale_CNN_x2_VL.glsl",
+      "~~/shaders/Anime4K_Restore_CNN_M.glsl",
+      "~~/shaders/Anime4K_AutoDownscalePre_x2.glsl",
+      "~~/shaders/Anime4K_AutoDownscalePre_x4.glsl",
+      "~~/shaders/Anime4K_Upscale_CNN_x2_M.glsl"
+    ]
+  },
+  "anime4k-5": {
+    "title": "Anime4K B+B",
+    "shaders": [
+      "~~/shaders/Anime4K_Clamp_Highlights.glsl",
+      "~~/shaders/Anime4K_Restore_CNN_Soft_VL.glsl",
+      "~~/shaders/Anime4K_Upscale_CNN_x2_VL.glsl",
+      "~~/shaders/Anime4K_AutoDownscalePre_x2.glsl",
+      "~~/shaders/Anime4K_AutoDownscalePre_x4.glsl",
+      "~~/shaders/Anime4K_Restore_CNN_Soft_M.glsl",
+      "~~/shaders/Anime4K_Upscale_CNN_x2_M.glsl"
+    ]
+  },
+  "anime4k-6": {
+    "title": "Anime4K C+A",
+    "shaders": [
+      "~~/shaders/Anime4K_Clamp_Highlights.glsl",
+      "~~/shaders/Anime4K_Upscale_Denoise_CNN_x2_VL.glsl",
+      "~~/shaders/Anime4K_AutoDownscalePre_x2.glsl",
+      "~~/shaders/Anime4K_AutoDownscalePre_x4.glsl",
+      "~~/shaders/Anime4K_Restore_CNN_M.glsl",
+      "~~/shaders/Anime4K_Upscale_CNN_x2_M.glsl"
+    ]
+  },
+  "base": {
+    "title": "基础画质",
+    "shaders": []
+  },
+  "artcnn16": {
+    "title": "ArtCNN C4F16",
+    "shaders": [
+      "~~/shaders/ArtCNN_C4F16.glsl"
+    ]
+  },
+  "artcnn32": {
+    "title": "ArtCNN C4F32",
+    "shaders": [
+      "~~/shaders/ArtCNN_C4F32.glsl"
+    ]
+  },
+  "anime": {
+    "title": "动画增强（RAVU）",
+    "shaders": [
+      "~~/shaders/SSim/SSimDownscaler_RT.glsl",
+      "~~/shaders/CfL/KrigBilateral.glsl",
+      "~~/shaders/RAISR/ravu_zoom_ar_r3.glsl"
+    ],
+    "options": {
+      "target-colorspace-hint": "yes",
+      "icc-profile-auto": "yes",
+      "hdr-compute-peak": "yes",
+      "tone-mapping": "bt.2446a",
+      "gamut-mapping-mode": "perceptual",
+      "deband": true,
+      "deband-iterations": 3,
+      "deband-threshold": 24,
+      "deband-range": 12,
+      "deband-grain": 12,
+      "sigmoid-upscaling": true,
+      "correct-downscaling": true,
+      "scale": "ewa_lanczos",
+      "cscale": "ewa_lanczos",
+      "dscale": "mitchell",
+      "scale-antiring": 0.95,
+      "cscale-antiring": 0.95,
+      "dither-depth": "auto",
+      "blend-subtitles": "no",
+      "interpolation": false
+    }
+  },
+  "liveaction": {
+    "title": "真人增强（RAVU）",
+    "shaders": [
+      "~~/shaders/SSim/SSimDownscaler_RT.glsl",
+      "~~/shaders/RAISR/ravu_zoom_ar_r3.glsl"
+    ],
+    "options": {
+      "target-colorspace-hint": "yes",
+      "icc-profile-auto": "yes",
+      "hdr-compute-peak": "yes",
+      "tone-mapping": "bt.2446a",
+      "gamut-mapping-mode": "perceptual",
+      "deband": true,
+      "deband-iterations": 4,
+      "deband-threshold": 48,
+      "deband-range": 18,
+      "deband-grain": 6,
+      "sigmoid-upscaling": true,
+      "correct-downscaling": true,
+      "scale": "ewa_lanczossharp",
+      "cscale": "ewa_lanczossharp",
+      "dscale": "mitchell",
+      "scale-antiring": 0.7,
+      "cscale-antiring": 0.7,
+      "dither-depth": "auto",
+      "blend-subtitles": "no",
+      "interpolation": false
+    }
+  }
+}

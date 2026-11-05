@@ -69,7 +69,9 @@ FFmpeg version: N-126125-g1d7b14f61
 | `Shift+↓` / `Shift+↑` | 降低 / 提高音量 1 |
 | `Ctrl+1` 至 `Ctrl+6` | 切换 Anime4K 模式 A、B、C、A+A、B+B、C+A |
 | `Ctrl+7` | 启用 ArtCNN C4F32 |
-| `Ctrl+0` | 清除所有 GLSL 着色器 |
+| `Ctrl+8` / `Ctrl+9` | 动画增强 / 真人增强 |
+| `b` | 切换去色带并提示状态 |
+| `Ctrl+0` | 恢复基础画质（包括参数和 shader） |
 | `Ctrl+A` | 打开 assrt 字幕搜索 |
 | 鼠标右键 | 打开上下文菜单 |
 | `>` / `<` | 先保存进度，再切换下一集 / 上一集 |
@@ -119,3 +121,11 @@ git push
 ## 第三方内容
 
 仓库包含第三方脚本、字体和着色器。请保留文件中的作者、来源及许可声明；具体使用和再分发条件以各组件原有许可为准。
+
+## 统一画质预设
+
+右键“画质预设”可选基础画质、动画增强（RAVU）、真人增强（RAVU）、Anime4K 六档、ArtCNN C4F16/C4F32。Ctrl+1～6 保留 Anime4K；Ctrl+7 为 ArtCNN C4F32；Ctrl+8 为动画增强；Ctrl+9 为真人增强；Ctrl+0 恢复基础画质。b 或菜单可单独切换去色带并显示提示。
+
+预设定义在 script-opts/quality-presets.json，统一切换脚本是 scripts/quality_presets.lua。切换前检查 shader 文件，恢复脚本启动时从 mpv 读取的画质基线，再应用目标档位；不重置音量、字幕和播放进度。基础画质不加载外部 shader。同一进程切集保持所选档位，重新启动回到基础画质。切换档位时去色带采用目标档默认状态；手动关闭不会跨档保留。参数设置失败会尝试恢复之前状态；GPU 后续编译错误仍需查看日志，不保证自动回退。
+
+动画、真人两档参考 Tigerest/Tigerest-Theater 的 resources/mpv/mpv.default.conf；新增 shader 保留原作者及许可声明。源项目：https://github.com/Tigerest/Tigerest-Theater 。SSim、Krig、RAVU 各自按图像阶段和条件运行，列表中存在不代表每个处理每帧都执行。RIFE 不包含在本次移植中。
