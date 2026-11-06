@@ -10,3 +10,7 @@
 
 # Runtime logs
 *.log
+
+# Python bytecode from optional RIFE helpers
+__pycache__/
+*.pyc

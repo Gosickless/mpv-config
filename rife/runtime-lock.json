@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "py3139-vs82-mlrt1516-trt10160",
+  "experimental": true,
+  "model": 425,
+  "driver_note": "CUDA 13.2 / TensorRT 10.16.0; driver compatibility must be checked on target GPU",
+  "assets": [
+    {
+      "name": "python.zip",
+      "url": "https://www.python.org/ftp/python/3.13.9/python-3.13.9-embed-amd64.zip",
+      "sha256": "91d828c2da3a029b41699e918674a0cb379c02cf20dab9c501306885f837402a",
+      "size": 10926675
+    },
+    {
+      "name": "vs.zip",
+      "url": "https://github.com/vapoursynth/vapoursynth/releases/download/R82/VapourSynth64-Portable-R82.zip",
+      "sha256": "f97ea50c4c9f778eeac4bc4e3e43f86fb3b71787371d06e584e0c47f396874ca",
+      "size": 31801679
+    },
+    {
+      "name": "scripts.7z",
+      "url": "https://github.com/AmusementClub/vs-mlrt/releases/download/v15.16/scripts.v15.16.7z",
+      "sha256": "d07dae0a00cb8dbf4f00358f640f630ff5d933de44d27050e7acce4f31cc3560",
+      "size": 17732
+    },
+    {
+      "name": "models.7z",
+      "url": "https://github.com/AmusementClub/vs-mlrt/releases/download/v15.16/models.v15.16.7z",
+      "sha256": "d4eaa8c1c4459082185a9e1a2c54d7e2c776abeea6aef6aee0cb8f6c151dfb02",
+      "size": 852114227
+    },
+    {
+      "name": "trt.7z.001",
+      "url": "https://github.com/AmusementClub/vs-mlrt/releases/download/v15.16/vsmlrt-windows-x64-tensorrt.v15.16.7z.001",
+      "sha256": "9fe674f62b9d33a369e7bd6584052986af4c81b12a82b75e5d82aad7c06733cb",
+      "size": 2147483647
+    },
+    {
+      "name": "trt.7z.002",
+      "url": "https://github.com/AmusementClub/vs-mlrt/releases/download/v15.16/vsmlrt-windows-x64-tensorrt.v15.16.7z.002",
+      "sha256": "387b295726bd159f5b4965d0ee8d55bb377f1d8a2add7f623324c60cece44a16",
+      "size": 528530525
+    }
+  ]
+}

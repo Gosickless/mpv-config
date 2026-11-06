@@ -129,3 +129,7 @@ git push
 预设定义在 script-opts/quality-presets.json，统一切换脚本是 scripts/quality_presets.lua。切换前检查 shader 文件，恢复脚本启动时从 mpv 读取的画质基线，再应用目标档位；不重置音量、字幕和播放进度。基础画质不加载外部 shader。同一进程切集保持所选档位，重新启动回到基础画质。切换档位时去色带采用目标档默认状态；手动关闭不会跨档保留。参数设置失败会尝试恢复之前状态；GPU 后续编译错误仍需查看日志，不保证自动回退。
 
 动画、真人两档参考 Tigerest/Tigerest-Theater 的 resources/mpv/mpv.default.conf；新增 shader 保留原作者及许可声明。源项目：https://github.com/Tigerest/Tigerest-Theater 。SSim、Krig、RAVU 各自按图像阶段和条件运行，列表中存在不代表每个处理每帧都执行。RIFE 不包含在本次移植中。
+
+## AI 补帧（实验实现，未验收）
+
+新增独立右键“AI 补帧”菜单，默认关闭，与画质预设分开。安装环境前会显示体积和目录并确认；环境不进入Git仓库。当前仅完成控制、安装器与标准VapourSynth接入代码及部分CPU测试，尚未完成RTX5070推理、4K性能和HDR10验收；HDR10候选模式默认禁用。安装与限制详见 [AI补帧说明](docs/ai-frame-interpolation.md)，不要把菜单存在当成补帧已验证可用。
