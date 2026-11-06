@@ -2,12 +2,31 @@
  [ValidateSet('Install','Launch','Probe','Prepare','Plan')][string]$Action='Probe',
  [string]$Root=(Join-Path $env:LOCALAPPDATA 'mpv-rife'),
  [string]$ConfigDir=(Split-Path $PSScriptRoot -Parent),
- [string]$Mpv='', [string]$CancelFile='', [string]$Request=''
+ [string]$Mpv='', [string]$CancelFile='', [string]$Request='',
+ [string]$PauseFile='', [string]$ProgressFile='', [switch]$Confirmed
 )
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-function Read-Json($Path){ Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json }
-function Write-Json($Path,$Value){ $temp=$Path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'; [IO.File]::WriteAllText($temp,($Value|ConvertTo-Json -Depth 8)); Move-Item -LiteralPath $temp -Destination $Path -Force }
+function Read-Json($Path){ Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json }
+function Write-Json($Path,$Value){
+ $temp=$Path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
+ [IO.File]::WriteAllText($temp,($Value|ConvertTo-Json -Depth 8))
+ for($attempt=0;$attempt -lt 20;$attempt++){
+  try{
+   if([IO.File]::Exists($Path)){[IO.File]::Replace($temp,$Path,[NullString]::Value)}else{[IO.File]::Move($temp,$Path)}
+   return
+  }catch{if($attempt -eq 19){throw};Start-Sleep -Milliseconds 20}
+ }
+}
+function File-Sha256($Path){
+ $stream=[IO.File]::OpenRead($Path);$hash=[Security.Cryptography.SHA256]::Create()
+ try{return ([BitConverter]::ToString($hash.ComputeHash($stream))).Replace('-','').ToLowerInvariant()}
+ finally{$stream.Dispose();$hash.Dispose()}
+}
+function Publish($Value){
+ if(-not $ProgressFile){$script:ProgressFile=Join-Path $Root 'progress.json'}
+ Write-Json $ProgressFile $Value
+}
 function Cancel-Check { if($CancelFile -and (Test-Path -LiteralPath $CancelFile)){throw 'Cancelled'} }
 function Expand-SafeZip($Archive,$Destination){
  [IO.Directory]::CreateDirectory($Destination)|Out-Null
@@ -34,20 +53,72 @@ function Expand-Safe7z($Archive,$Destination){
 }
 function Download-Checked($Asset,$Directory){
  $dest=Join-Path $Directory $Asset.name
- if(Test-Path -LiteralPath $dest){if((Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash.ToLowerInvariant() -eq $Asset.sha256){return $dest}}
  $part=$dest+'.part'
- $request=[Net.HttpWebRequest]::Create($Asset.url);$request.UserAgent='mpv-rife-installer';$request.Timeout=30000;$request.ReadWriteTimeout=30000
- $response=$request.GetResponse();$inputStream=$response.GetResponseStream();$output=[IO.File]::Create($part)
- try{$buffer=New-Object byte[] 1048576;$bytes=0L
-  while(($n=$inputStream.Read($buffer,0,$buffer.Length)) -gt 0){Cancel-Check;$output.Write($buffer,0,$n);$bytes+=$n
-   Write-Json (Join-Path $Root 'progress.json') @{phase='download';file=$Asset.name;bytes=$bytes;total=$Asset.size}
+ $completed=if($null -ne $script:CompletedBytes){$script:CompletedBytes}else{0L}
+ $all=if($null -ne $script:DownloadTotal){$script:DownloadTotal}else{$Asset.size}
+ if(Test-Path -LiteralPath $dest){
+  Publish @{phase='verifying';file=$Asset.name;overall=$completed;total=$all}
+  if((File-Sha256 $dest) -eq $Asset.sha256){return $dest}
+ }
+ while($true){
+  Cancel-Check
+  while($PauseFile -and (Test-Path -LiteralPath $PauseFile)){
+   $offset=if(Test-Path -LiteralPath $part){(Get-Item -LiteralPath $part).Length}else{0L}
+   Publish @{phase='paused';file=$Asset.name;bytes=$offset;overall=($completed+$offset);total=$all}
+   Start-Sleep -Milliseconds 200;Cancel-Check
   }
- }finally{$output.Dispose();$inputStream.Dispose();$response.Dispose()}
- if($Asset.size -gt 0 -and (Get-Item -LiteralPath $part).Length -ne $Asset.size){throw 'Download size mismatch'}
- if((Get-FileHash -LiteralPath $part -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Asset.sha256){throw 'Download SHA256 mismatch'}
- Move-Item -LiteralPath $part -Destination $dest -Force
+  $offset=if(Test-Path -LiteralPath $part){(Get-Item -LiteralPath $part).Length}else{0L}
+  if($offset -ge $Asset.size){
+   Publish @{phase='verifying';file=$Asset.name;overall=($completed+[math]::Min($offset,$Asset.size));total=$all}
+   if($offset -eq $Asset.size -and (File-Sha256 $part) -eq $Asset.sha256){break}
+   # Reset only our own invalid partial download.
+   [IO.File]::Create($part).Dispose();$offset=0L
+  }
+  Publish @{phase='download';file=$Asset.name;bytes=$offset;overall=($completed+$offset);total=$all}
+  $request=[Net.HttpWebRequest]::Create($Asset.url)
+  $request.UserAgent='mpv-rife-installer';$request.Timeout=30000;$request.ReadWriteTimeout=30000
+  if($offset -gt 0){$request.AddRange($offset)}
+  $response=$null;$inputStream=$null;$output=$null;$paused=$false
+  try{
+   $response=$request.GetResponse()
+   if([int]$response.StatusCode -eq 206){
+    $range=$response.Headers['Content-Range']
+    if($range -notmatch ('^bytes '+$offset+'-[0-9]+/'+$Asset.size+'$')){throw 'Invalid HTTP resume range'}
+   }else{
+    # A server may ignore Range: restart, never append a full response.
+    $offset=0L
+   }
+   $inputStream=$response.GetResponseStream()
+   $mode=if($offset -gt 0){[IO.FileMode]::Append}else{[IO.FileMode]::Create}
+   $output=[IO.File]::Open($part,$mode,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+   $buffer=New-Object byte[] 262144;$bytes=$offset;$last=0L
+   $watch=[Diagnostics.Stopwatch]::StartNew()
+   while($true){
+    Cancel-Check
+    if($PauseFile -and (Test-Path -LiteralPath $PauseFile)){$paused=$true;break}
+    $n=$inputStream.Read($buffer,0,$buffer.Length);if($n -eq 0){break}
+    $output.Write($buffer,0,$n);$bytes+=$n
+    if($bytes -gt $Asset.size){throw 'Download exceeds expected size'}
+    if($watch.ElapsedMilliseconds-$last -ge 250){
+     $output.Flush();$last=$watch.ElapsedMilliseconds
+     Publish @{phase='download';file=$Asset.name;bytes=$bytes;overall=($completed+$bytes);total=$all}
+    }
+   }
+  }finally{
+   if($output){$output.Dispose()};if($inputStream){$inputStream.Dispose()};if($response){$response.Dispose()}
+  }
+  if($paused){continue}
+  if((Get-Item -LiteralPath $part).Length -ne $Asset.size){throw 'Download interrupted; retry to resume'}
+  Publish @{phase='verifying';file=$Asset.name;overall=($completed+$Asset.size);total=$all}
+  if((File-Sha256 $part) -ne $Asset.sha256){
+   [IO.File]::Create($part).Dispose();throw 'Download SHA256 mismatch; retry required'
+  }
+  break
+ }
+ if([IO.File]::Exists($dest)){[IO.File]::Replace($part,$dest,[NullString]::Value)}else{[IO.File]::Move($part,$dest)}
  return $dest
 }
+
 try{
  $Root=[IO.Path]::GetFullPath($Root)
  if($Action -eq 'Plan'){
@@ -57,18 +128,20 @@ try{
  }
  if($Action -eq 'Install'){
   $lock=Read-Json (Join-Path $PSScriptRoot 'runtime-lock.json')
-  Add-Type -AssemblyName System.Windows.Forms
-  $gb=[math]::Round(($lock.assets|Measure-Object size -Sum).Sum/1GB,2)
-  $answer=[Windows.Forms.MessageBox]::Show("实验性 RIFE 扩展：下载约 $gb GiB，准备至少 12 GiB 可用空间。`n保存到：$Root`n需要支持 CUDA 13.2 的 NVIDIA 驱动。此依赖组合尚未在 RTX 5070 上验收。`n不会修改系统 Python 或 PATH。安装后需用配套启动器重启 mpv。`n是否开始下载？",'安装 AI 补帧环境','YesNo','Question')
-  if($answer -ne 'Yes'){Write-Output 'Cancelled';exit 0}
+  if(-not $Confirmed){
+   & (Join-Path $PSScriptRoot 'manager.ps1') -Root $Root -ConfigDir $ConfigDir -Mpv $Mpv
+   exit $LASTEXITCODE
+  }
   [IO.Directory]::CreateDirectory($Root)|Out-Null
   $mutex=[IO.File]::Open((Join-Path $Root 'install.lock'),'OpenOrCreate','ReadWrite','None')
   try{
    $drive=New-Object IO.DriveInfo ([IO.Path]::GetPathRoot($Root));if($drive.AvailableFreeSpace -lt 12GB){throw 'Insufficient disk space: need 12 GiB'}
    $stage=Join-Path $Root ('staging/'+[guid]::NewGuid().ToString('N'));$downloads=Join-Path $Root 'downloads'
    [IO.Directory]::CreateDirectory($stage)|Out-Null;[IO.Directory]::CreateDirectory($downloads)|Out-Null
-   foreach($asset in $lock.assets){Download-Checked $asset $downloads|Out-Null}
-   Write-Json (Join-Path $Root 'progress.json') @{phase='extracting'}
+   $script:DownloadTotal=($lock.assets|Measure-Object size -Sum).Sum
+   $script:CompletedBytes=0L
+   foreach($asset in $lock.assets){Download-Checked $asset $downloads|Out-Null;$script:CompletedBytes+=$asset.size}
+   Publish @{phase='extracting'}
    $runtime=Join-Path $stage 'runtime'
    Expand-SafeZip (Join-Path $downloads 'python.zip') $runtime
    Expand-SafeZip (Join-Path $downloads 'vs.zip') (Join-Path $stage 'vs')
@@ -101,9 +174,9 @@ try{
    $destination=Join-Path $Root ('runtime/'+$lock.id+'-'+[guid]::NewGuid().ToString('N'))
    [IO.Directory]::CreateDirectory((Split-Path $destination -Parent))|Out-Null
    Move-Item -LiteralPath $runtime -Destination $destination
-   Write-Json (Join-Path $Root 'active.json') @{root=$destination;id=$lock.id;installed=$true;gpu_verified=$false;hdr_verified=$false}
-   Write-Json (Join-Path $Root 'progress.json') @{phase='installed';message='Restart through launch.ps1; GPU/HDR not verified'}
-   Write-Output 'Installed. Restart using rife/launch.ps1. GPU and HDR remain unverified.'
+   Write-Json (Join-Path $Root 'active.json') @{root=$destination;id=$lock.id;installed=$true;installed_at=[DateTime]::UtcNow.ToString('o');gpu_verified=$false;hdr_verified=$false}
+   Publish @{phase='installed'}
+   Write-Output 'Installed'
   }finally{$mutex.Dispose()}
  }else{
   $active=Read-Json (Join-Path $Root 'active.json');$runtime=$active.root
@@ -145,9 +218,13 @@ try{
   # Arguments are quoted individually; no shell-built command or global environment edits.
   $args=@(('"--config-dir='+$ConfigDir.TrimEnd('\')+'"'),'--idle=yes','--force-window=yes')
   Start-Process -FilePath $Mpv -ArgumentList $args
+  exit 0
  }
 }catch{
  Write-Error $_ -ErrorAction Continue
- if(Test-Path -LiteralPath $Root){Write-Json (Join-Path $Root 'progress.json') @{phase='error';message=$_.Exception.Message}}
+ if(Test-Path -LiteralPath $Root){
+  $phase=if($_.Exception.Message -eq 'Cancelled'){'cancelled'}else{'error'}
+  Publish @{phase=$phase;message=$_.Exception.Message}
+ }
  exit 1
 }
