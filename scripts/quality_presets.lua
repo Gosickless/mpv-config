@@ -76,13 +76,14 @@ local function update_deband_title()
     if updating_menu then return end
     local menu = mp.get_property_native('menu-data')
     if type(menu) ~= 'table' then return end
-    local title = '去色带：'..(mp.get_property_bool('deband', false) and '开启' or '关闭')..'  [b]'
+    local title = '去色带：'..(mp.get_property_bool('deband', false) and '开启' or '关闭')
     local changed = false
     local function walk(items)
         for _, item in ipairs(items) do
             if type(item) == 'table' then
-                if type(item.title) == 'string' and item.title:match('^去色带：') and item.title ~= title then
-                    item.title = title; changed = true
+                if type(item.title) == 'string' and item.title:match('^去色带：')
+                    and (item.title ~= title or item.shortcut ~= 'b') then
+                    item.title = title; item.shortcut = 'b'; changed = true
                 end
                 if type(item.submenu) == 'table' then walk(item.submenu) end
             end
