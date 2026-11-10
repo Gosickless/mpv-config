@@ -81,8 +81,9 @@ local function update_deband_title()
     local function walk(items)
         for _, item in ipairs(items) do
             if type(item) == 'table' then
-                if type(item.title) == 'string' and item.title:match('^去色带：') and item.title ~= title then
-                    item.title = title; changed = true
+                if type(item.title) == 'string' and item.title:match('^去色带：')
+                    and (item.title ~= title or item.shortcut ~= 'b') then
+                    item.title = title; item.shortcut = 'b'; changed = true
                 end
                 if type(item.submenu) == 'table' then walk(item.submenu) end
             end
