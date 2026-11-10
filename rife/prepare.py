@@ -2,8 +2,11 @@
 import argparse
 import json
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from policy import validate
-from probe import load_runtime
+from probe import load_runtime, gpu_identity
+from engine_cache import engine_directory
 from settings import selection
 
 def prepare(root, request):
@@ -12,14 +15,15 @@ def prepare(root, request):
     model, factor = selection(options, fps)
     vs, handles, runtime, layout = load_runtime(root)
     from vsmlrt import RIFE, RIFEModel, Backend
-    cache = Path(root) / 'cache' / layout['id']
-    cache.mkdir(parents=True, exist_ok=True)
+    options['gpu'] = options.get('gpu') or gpu_identity()
     clip = vs.core.std.BlankClip(width=w,height=h,length=3,format=vs.RGBS,
                                  fpsnum=fps.numerator,fpsden=fps.denominator)
-    backend = Backend.TRT(fp16=True,num_streams=1,use_cuda_graph=False,
-                          engine_folder=str(cache),short_path=True)
-    result = RIFE(clip,multi=factor,model=RIFEModel(model),backend=backend,video_player=True)
-    result.get_frame(1)
+    with engine_directory(root, layout['id'], options, model, build=True) as cache:
+        backend = Backend.TRT(fp16=True,num_streams=1,use_cuda_graph=False,
+                              engine_folder=str(cache),short_path=True)
+        result = RIFE(clip,multi=factor,model=RIFEModel(model),backend=backend,video_player=True,_implementation=2)
+        result.get_frame(1)
+        del result
     return {'ok':True,'engine_prepared':True,'hdr_verified':False}
 
 if __name__=='__main__':

@@ -22,22 +22,27 @@ def runtime_layout(root):
 def load_runtime(root):
     runtime, layout = runtime_layout(root)
     # Retain the handles for the lifetime of this VS script/session.
-    handles = [os.add_dll_directory(str(p)) for p in sorted({p.parent for p in runtime.rglob('*.dll')})]
-    os.environ['PATH'] = os.pathsep.join(str(p.parent) for p in runtime.rglob('*.dll')) + os.pathsep + os.environ.get('PATH', '')
+    directories = sorted({p.parent for p in runtime.rglob('*.dll')})
+    handles = [os.add_dll_directory(str(p)) for p in directories]
+    os.environ['PATH'] = os.pathsep.join(dict.fromkeys([str(p) for p in directories] + os.environ.get('PATH', '').split(os.pathsep)))
     sys.path.insert(0, str(runtime / layout['scripts']))
     import vapoursynth as vs
     if not hasattr(vs.core, 'trt'):
         vs.core.std.LoadPlugin(path=str(runtime / layout['plugin']))
     return vs, handles, runtime, layout
 
-def probe(root):
+def gpu_identity():
     result = subprocess.run(['nvidia-smi', '--query-gpu=name,driver_version,uuid', '--format=csv,noheader'],
                             capture_output=True, text=True, timeout=15, creationflags=0x08000000)
     if result.returncode or not result.stdout.strip():
         raise RuntimeError('未检测到可用NVIDIA驱动')
+    return result.stdout.strip()
+
+def probe(root):
+    gpu = gpu_identity()
     vs, handles, runtime, layout = load_runtime(root)
     import vsmlrt
-    return {'ok': True, 'gpu': result.stdout.strip(), 'runtime': str(runtime),
+    return {'ok': True, 'gpu': gpu, 'runtime': str(runtime),
             'vapoursynth': str(vs.__version__), 'vsmlrt': vsmlrt.__version__,
             'inference_verified': False, 'hdr_verified': False}
 

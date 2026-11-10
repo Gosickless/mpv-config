@@ -28,6 +28,17 @@ function Publish($Value){
  Write-Json $ProgressFile $Value
 }
 function Cancel-Check { if($CancelFile -and (Test-Path -LiteralPath $CancelFile)){throw 'Cancelled'} }
+function Clear-Staging($Path){
+ $prefix=[IO.Path]::GetFullPath((Join-Path $Root 'staging')).TrimEnd('\')+'\'
+ $resolved=[IO.Path]::GetFullPath($Path)
+ if(-not $resolved.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase) -or (Split-Path $resolved -Leaf) -notmatch '^[0-9a-f]{32}$'){throw 'Invalid staging cleanup path'}
+ if(-not (Test-Path -LiteralPath $resolved)){return}
+ $items=@(Get-Item -LiteralPath $resolved)+@(Get-ChildItem -LiteralPath $resolved -Recurse -Force)
+ foreach($item in $items){
+  if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or ($item.FullName -ne $resolved -and -not [IO.Path]::GetFullPath($item.FullName).StartsWith($resolved+'\',[StringComparison]::OrdinalIgnoreCase))){throw 'Unsafe staging entry'}
+ }
+ foreach($item in ($items | Sort-Object {$_.FullName.Length} -Descending)){Remove-Item -LiteralPath $item.FullName -Force}
+}
 function Expand-SafeZip($Archive,$Destination){
  [IO.Directory]::CreateDirectory($Destination)|Out-Null
  $prefix=[IO.Path]::GetFullPath($Destination).TrimEnd('\')+'\'
@@ -134,20 +145,20 @@ try{
   }
   [IO.Directory]::CreateDirectory($Root)|Out-Null
   $mutex=[IO.File]::Open((Join-Path $Root 'install.lock'),'OpenOrCreate','ReadWrite','None')
+  $stage=$null
   try{
    $drive=New-Object IO.DriveInfo ([IO.Path]::GetPathRoot($Root));if($drive.AvailableFreeSpace -lt 12GB){throw 'Insufficient disk space: need 12 GiB'}
-   $stage=Join-Path $Root ('staging/'+[guid]::NewGuid().ToString('N'));$downloads=Join-Path $Root 'downloads'
-   [IO.Directory]::CreateDirectory($stage)|Out-Null;[IO.Directory]::CreateDirectory($downloads)|Out-Null
+   $downloads=Join-Path $Root 'downloads'
+   [IO.Directory]::CreateDirectory($downloads)|Out-Null
    $script:DownloadTotal=($lock.assets|Measure-Object size -Sum).Sum
    $script:CompletedBytes=0L
    foreach($asset in $lock.assets){Download-Checked $asset $downloads|Out-Null;$script:CompletedBytes+=$asset.size}
+   $stage=Join-Path $Root ('staging/'+[guid]::NewGuid().ToString('N'))
+   [IO.Directory]::CreateDirectory($stage)|Out-Null
    Publish @{phase='extracting'}
    $runtime=Join-Path $stage 'runtime'
    Expand-SafeZip (Join-Path $downloads 'python.zip') $runtime
-   Expand-SafeZip (Join-Path $downloads 'vs.zip') (Join-Path $stage 'vs')
-   $wheel=Get-ChildItem (Join-Path $stage 'vs/wheel') -Filter '*.whl' | Select-Object -First 1
-   if(-not $wheel){throw 'VapourSynth wheel missing'}
-   Expand-SafeZip $wheel.FullName (Join-Path $runtime 'Lib/site-packages')
+   Expand-SafeZip (Join-Path $downloads 'vs.whl') (Join-Path $runtime 'Lib/site-packages')
    [IO.File]::WriteAllText((Join-Path $runtime 'python313._pth'),"python313.zip`n.`nLib/site-packages`nimport site`n")
    # Adjacent marker prevents VS discovering globally installed plugins.
    [IO.File]::WriteAllText((Join-Path $runtime 'Lib/site-packages/vapoursynth/portable.vs'),'')
@@ -157,27 +168,39 @@ try{
    Expand-Safe7z (Join-Path $downloads 'scripts.7z') (Join-Path $runtime 'scripts')
    $plugin=Get-ChildItem (Join-Path $runtime 'plugins') -Recurse -Filter 'vstrt.dll' | Select-Object -First 1
    if(-not $plugin){throw 'TensorRT plugin missing'}
-   Expand-Safe7z (Join-Path $downloads 'models.7z') (Join-Path $stage 'models')
-   $model=Get-ChildItem (Join-Path $stage 'models') -Recurse -Filter 'rife_v4.25.onnx' | Select-Object -First 1
-   if(-not $model){throw 'RIFE v4.25 model missing'}
-   $modelsRoot=Split-Path (Split-Path $model.FullName -Parent) -Parent
    $modelDestination=Join-Path $plugin.DirectoryName 'models'
    [IO.Directory]::CreateDirectory($modelDestination)|Out-Null
-   Get-ChildItem -LiteralPath $modelsRoot -Force | Copy-Item -Destination $modelDestination -Recurse -Force
+   foreach($variant in @('','_lite','_heavy')){
+    Expand-Safe7z (Join-Path $downloads ('rife_v4.25'+$variant+'.7z')) $modelDestination
+    if(-not (Test-Path -LiteralPath (Join-Path $modelDestination ('rife_v2/rife_v4.25'+$variant+'.onnx')))){throw ('RIFE v4.25'+$variant+' model missing')}
+   }
    $vs=Get-ChildItem $runtime -Recurse -Filter 'vsscript.dll' | Select-Object -First 1
    $script=Get-ChildItem (Join-Path $runtime 'scripts') -Recurse -Filter 'vsmlrt.py' | Select-Object -First 1
    if(-not $vs -or -not $script){throw 'Runtime files missing'}
    $layout=@{id=$lock.id;python='python.exe';vsscript=$vs.FullName.Substring($runtime.Length+1);plugin=$plugin.FullName.Substring($runtime.Length+1);scripts=$script.DirectoryName.Substring($runtime.Length+1);model=425;experimental=$true}
    Write-Json (Join-Path $runtime 'runtime.json') $layout
-   & (Join-Path $runtime 'python.exe') -c 'import vapoursynth; print(vapoursynth.__version__)'
-   if($LASTEXITCODE -ne 0){throw 'VapourSynth import failed'}
+   @'
+import os, sys
+from pathlib import Path
+runtime, plugin, scripts = map(Path, sys.argv[1:])
+handles = [os.add_dll_directory(str(p)) for p in sorted({p.parent for p in runtime.rglob('*.dll')})]
+sys.path.insert(0, str(scripts))
+import vapoursynth as vs
+vs.core.std.LoadPlugin(path=str(plugin))
+import vsmlrt
+print(vs.__version__, vsmlrt.__version__)
+'@ | & (Join-Path $runtime 'python.exe') - $runtime $plugin.FullName $script.DirectoryName
+   if($LASTEXITCODE -ne 0){throw 'VapourSynth/TensorRT compatibility check failed'}
+   Cancel-Check
    $destination=Join-Path $Root ('runtime/'+$lock.id+'-'+[guid]::NewGuid().ToString('N'))
    [IO.Directory]::CreateDirectory((Split-Path $destination -Parent))|Out-Null
+   if(-not [IO.Path]::GetFullPath($runtime).StartsWith([IO.Path]::GetFullPath($stage).TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase) -or -not [IO.Path]::GetFullPath($destination).StartsWith([IO.Path]::GetFullPath((Join-Path $Root 'runtime')).TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Invalid runtime publication path'}
    Move-Item -LiteralPath $runtime -Destination $destination
+   Clear-Staging $stage
    Write-Json (Join-Path $Root 'active.json') @{root=$destination;id=$lock.id;installed=$true;installed_at=[DateTime]::UtcNow.ToString('o');gpu_verified=$false;hdr_verified=$false}
    Publish @{phase='installed'}
    Write-Output 'Installed'
-  }finally{$mutex.Dispose()}
+  }finally{try{if($stage){Clear-Staging $stage}}finally{$mutex.Dispose()}}
  }else{
   $active=Read-Json (Join-Path $Root 'active.json');$runtime=$active.root
   $prefix=[IO.Path]::GetFullPath((Join-Path $Root 'runtime')).TrimEnd('\')+'\'
@@ -200,6 +223,7 @@ try{
    $stderr=$output+'.stderr'
    $arguments=@(('"'+(Join-Path $PSScriptRoot 'prepare.py')+'"'),'--root',('"'+$Root+'"'),'--request',('"'+$Request+'"'))
    $child=Start-Process -FilePath (Join-Path $runtime 'python.exe') -ArgumentList $arguments -PassThru -WindowStyle Hidden -RedirectStandardOutput $output -RedirectStandardError $stderr
+   $null=$child.Handle
    try{
     while(-not $child.HasExited){
      if($CancelFile -and (Test-Path -LiteralPath $CancelFile)){

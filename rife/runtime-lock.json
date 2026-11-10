@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "id": "py3139-vs82-mlrt1516-trt10160",
+  "id": "py3139-vs79-mlrt1516-rife425-v2",
   "experimental": true,
   "model": 425,
   "driver_note": "CUDA 13.2 / TensorRT 10.16.0; driver compatibility must be checked on target GPU",
@@ -12,10 +12,10 @@
       "size": 10926675
     },
     {
-      "name": "vs.zip",
-      "url": "https://github.com/vapoursynth/vapoursynth/releases/download/R82/VapourSynth64-Portable-R82.zip",
-      "sha256": "f97ea50c4c9f778eeac4bc4e3e43f86fb3b71787371d06e584e0c47f396874ca",
-      "size": 31801679
+      "name": "vs.whl",
+      "url": "https://files.pythonhosted.org/packages/bc/e4/e551a29871be0e2f0378232e7f347b944b632fa23a42c056cfec53485f95/vapoursynth-79-cp312-abi3-win_amd64.whl",
+      "sha256": "643d9708df7e98807a66d4e8804e2e9a1380af22bea2873387d8af103e69aa5b",
+      "size": 15157546
     },
     {
       "name": "scripts.7z",
@@ -24,10 +24,22 @@
       "size": 17732
     },
     {
-      "name": "models.7z",
-      "url": "https://github.com/AmusementClub/vs-mlrt/releases/download/v15.16/models.v15.16.7z",
-      "sha256": "d4eaa8c1c4459082185a9e1a2c54d7e2c776abeea6aef6aee0cb8f6c151dfb02",
-      "size": 852114227
+      "name": "rife_v4.25.7z",
+      "url": "https://github.com/AmusementClub/vs-mlrt/releases/download/external-models/rife_v4.25.7z",
+      "sha256": "172fe975c1775134bb87108e4ec6d1a89e861cc5d3be2ac23bf08afe5ed626b8",
+      "size": 21026388
+    },
+    {
+      "name": "rife_v4.25_lite.7z",
+      "url": "https://github.com/AmusementClub/vs-mlrt/releases/download/external-models/rife_v4.25_lite.7z",
+      "sha256": "7d53e29fff5e67345b19f4ce97dfd1e34b490eedc752df2236904fda1a13842c",
+      "size": 20936472
+    },
+    {
+      "name": "rife_v4.25_heavy.7z",
+      "url": "https://github.com/AmusementClub/vs-mlrt/releases/download/external-models/rife_v4.25_heavy.7z",
+      "sha256": "d51b92bf4f1408d1e2e243c44cb8ca1fc885fdff42a4a01f03b23b5f54917592",
+      "size": 80440268
     },
     {
       "name": "trt.7z.001",

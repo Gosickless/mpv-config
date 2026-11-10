@@ -55,7 +55,7 @@ function Installed-Record {
   try{
    $record=Get-Content -LiteralPath $file -Raw -Encoding UTF8|ConvertFrom-Json
    $prefix=[IO.Path]::GetFullPath((Join-Path $Root 'runtime')).TrimEnd('\')+'\'
-   if($record.installed -and [IO.Path]::GetFullPath($record.root).StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath (Join-Path $record.root 'runtime.json'))){return $record}
+   if($record.installed -and $record.id -eq $manifest.id -and [IO.Path]::GetFullPath($record.root).StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath (Join-Path $record.root 'runtime.json'))){return $record}
   }catch{}
  }
  return $null
@@ -137,6 +137,7 @@ $primary.Add_Click({
   $script:paused=$false;$script:lastError='';$script:closing=$false
   $arguments=@('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',('"'+(Join-Path $PSScriptRoot 'runtime.ps1')+'"'),'-Action','Install','-Confirmed','-Root',('"'+$Root+'"'),'-CancelFile',('"'+(Join-Path $script:jobDir 'cancel')+'"'),'-PauseFile',('"'+(Join-Path $script:jobDir 'pause')+'"'),'-ProgressFile',('"'+(Join-Path $script:jobDir 'progress.json')+'"'))
   $script:worker=Start-Process -FilePath 'powershell.exe' -ArgumentList $arguments -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:jobDir 'output.log') -RedirectStandardError (Join-Path $script:jobDir 'error.log')
+  $null=$script:worker.Handle
   $script:busy=$true;Show-State 'verifying' $null;$phaseLabel.Text='正在准备下载';$timer.Start()
  }catch{$script:lastError=$_.Exception.Message;Show-State 'error' $null}
 })

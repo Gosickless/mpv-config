@@ -21,6 +21,8 @@ local function read_json(path)
     local f=io.open(path,'rb'); if not f then return nil end
     local s=f:read('*a');f:close(); return utils.parse_json(s:gsub('^\239\187\191',''))
 end
+local manifest=read_json(utils.join_path(config,'rife/runtime-lock.json'))
+local function current_install(record) return record and record.installed and manifest and record.id==manifest.id end
 local function has_filter()
     for _,f in ipairs(mp.get_property_native('vf') or {}) do if f.label==tag then return true end end
     return false
@@ -41,7 +43,7 @@ local function update_menu()
             end
             if type(item.title)=='string' and item.title:match('^补帧组件：') then
                 local installed=read_json(utils.join_path(root,'active.json'))
-                local title='补帧组件：'..(installed and installed.installed and '已安装' or '未安装')
+                local title='补帧组件：'..(current_install(installed) and '已安装' or '未安装')
                 if item.title~=title then item.title=title;changed=true end
             end
             if type(item.title)=='string' and item.title:match('^AI补帧：') then
@@ -127,8 +129,8 @@ local function attach(token,params)
     local payload=utils.format_json(params)
     local filter='@'..tag..':vapoursynth=file='..quoted(bridge)..':user-data='..quoted(payload)..':buffered-frames=4:concurrent-frames=1'
     state('正在准备')
-    local ok,err=mp.command_native({'vf','add',filter})
-    if not ok then mp.msg.error(tostring(err));fail('暂时无法启用补帧，请重新打开视频后重试');return end
+    local _,err=mp.command_native({'vf','add',filter})
+    if err or not has_filter() then mp.msg.error(tostring(err));fail('暂时无法启用补帧，请重新打开视频后重试');return end
     if token~=generation or not requested then remove_filter();return end
     active=has_filter()
     expected_fps=params.output_fps;stable_samples=0
@@ -153,7 +155,7 @@ enable=function()
     if busy then return end
     if mp.get_property_number('speed',1)~=1 then requested=true;state('暂未启用','恢复正常播放速度后将自动开启');return end
     local installed=read_json(utils.join_path(root,'active.json'))
-    if not installed then install();return end
+    if not current_install(installed) then install();return end
     local params,err=input_options();if not params then fail(err);return end
     if not os.getenv('VSSCRIPT_PATH') or normalize(os.getenv('MPV_RIFE_ROOT'))~=normalize(root) then install();notify('请在组件管理中点击“打开播放器”，然后开启补帧');return end
     requested=true;generation=generation+1;local token=generation
@@ -166,6 +168,7 @@ enable=function()
         if not success or not result or result.status~=0 or not result_json or not result_json.ok then
             mp.msg.error(result_json and result_json.error or 'runtime probe failed');fail('补帧组件暂时不可用，请确认显卡驱动已更新');return
         end
+        params.gpu=result_json.gpu
         -- Build on a separate process, not inside mpv's render thread.
         cancel_file=utils.join_path(os.getenv('TEMP') or root,'mpv-rife-prepare-cancel-'..utils.getpid()..'-'..tostring(token))
         local request=utils.join_path(root,'request-'..utils.getpid()..'-'..tostring(token)..'.json')
