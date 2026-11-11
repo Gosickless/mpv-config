@@ -1,5 +1,5 @@
 ﻿param(
- [ValidateSet('Install','Uninstall','Launch','Probe','Prepare','Plan')][string]$Action='Probe',
+ [ValidateSet('Install','Uninstall','Launch','Probe','Prepare','Plan','CleanLogs')][string]$Action='Probe',
  [string]$Root=(Join-Path $env:LOCALAPPDATA 'mpv-rife'),
  [string]$ConfigDir=(Split-Path $PSScriptRoot -Parent),
  [string]$Mpv='', [string]$CancelFile='', [string]$Request='',
@@ -28,6 +28,29 @@ function Publish($Value){
  Write-Json $ProgressFile $Value
 }
 function Cancel-Check { if($CancelFile -and (Test-Path -LiteralPath $CancelFile)){throw 'Cancelled'} }
+function Open-PrepareLogLease {
+ for($attempt=0;$attempt -lt 50;$attempt++){
+  Cancel-Check
+  try{return [IO.File]::Open((Join-Path $Root 'install.lock'),'OpenOrCreate','Read','Read')}
+  catch [IO.IOException]{if($attempt -eq 49){throw};Start-Sleep -Milliseconds 100}
+ }
+}
+function Clear-PrepareLogs {
+ if(-not [IO.Directory]::Exists($Root)){return}
+ if((Get-Item -LiteralPath $Root -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){return}
+ $lockPath=Join-Path $Root 'install.lock'
+ if((Test-Path -LiteralPath $lockPath) -and ((Get-Item -LiteralPath $lockPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){return}
+ try{$lease=[IO.File]::Open($lockPath,'OpenOrCreate','ReadWrite','None')}
+ catch [IO.IOException]{return} # Another player is still preparing, or installation is busy.
+ try{
+  foreach($item in (Get-ChildItem -LiteralPath $Root -File -Force)){
+   if($item.Name -notmatch '^prepare-[0-9a-f]{32}\.jsonl(\.stderr)?$' -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){continue}
+   try{Remove-Item -LiteralPath $item.FullName -ErrorAction Stop}
+   catch [IO.IOException]{} # Also tolerate files held by an older preparation process.
+   catch [UnauthorizedAccessException]{}
+  }
+ }finally{$lease.Dispose()}
+}
 function Clear-Staging($Path){
  $prefix=[IO.Path]::GetFullPath((Join-Path $Root 'staging')).TrimEnd('\')+'\'
  $resolved=[IO.Path]::GetFullPath($Path)
@@ -132,6 +155,7 @@ function Download-Checked($Asset,$Directory){
 
 try{
  $Root=[IO.Path]::GetFullPath($Root)
+ if($Action -eq 'CleanLogs'){Clear-PrepareLogs;exit 0}
  if($Action -eq 'Uninstall'){
   if(-not $Confirmed){throw 'Uninstall requires confirmation in the component manager'}
   . (Join-Path $PSScriptRoot 'maintenance.ps1')
@@ -226,6 +250,8 @@ print(vs.__version__, vsmlrt.__version__)
   }
   if($Action -eq 'Prepare'){
    if(-not $Request -or -not (Test-Path -LiteralPath $Request)){throw 'Missing request JSON'}
+   $logLease=Open-PrepareLogLease
+   try{
    $output=Join-Path $Root ('prepare-'+[guid]::NewGuid().ToString('N')+'.jsonl')
    $stderr=$output+'.stderr'
    $arguments=@(('"'+(Join-Path $PSScriptRoot 'prepare.py')+'"'),'--root',('"'+$Root+'"'),'--request',('"'+$Request+'"'))
@@ -243,6 +269,7 @@ print(vs.__version__, vsmlrt.__version__)
     Get-Content -LiteralPath $output
     if($child.ExitCode -ne 0){throw ('Engine preparation failed; log: '+$stderr)}
    }finally{$child.Dispose()}
+   }finally{$logLease.Dispose()}
    exit 0
   }
   if(-not $Mpv -or -not (Test-Path -LiteralPath $Mpv)){throw 'Specify -Mpv with full path to mpv.exe'}

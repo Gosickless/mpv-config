@@ -36,6 +36,7 @@ function fake.command_native(args)
  if args[1]=='vf' then filtered=args[2]=='add' end
 end
 function fake.commandv(...) end
+function fake.command_native_async(...) end
 function fake.osd_message(...) end
 function fake.enable_messages(...) end
 function fake.register_script_message(...) end

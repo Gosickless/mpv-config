@@ -1,4 +1,4 @@
--- Optional RIFE extension. Off means no subprocess, network, or video filter.
+-- Optional RIFE extension. Startup only clears old preparation logs; inference stays off.
 local mp = require 'mp'
 local utils = require 'mp.utils'
 local options = {runtime_root='', experimental_hdr=true, model='standard', target_fps=0}
@@ -294,3 +294,12 @@ mp.register_event('shutdown',function() cancel_prepare() end)
 mp.observe_property('menu-data','native',update_menu)
 mp.observe_property('user-data/mpv/context-menu/open','native',function(_,open) if open then update_menu() end end)
 state('关闭')
+for _,name in ipairs(utils.readdir(root,'files') or {}) do
+    local id,suffix=name:match('^prepare%-(%x+)%.jsonl(.*)$')
+    if id and #id==32 and (suffix=='' or suffix=='.stderr') then
+        mp.command_native_async({name='subprocess',args=helper_args('CleanLogs'),playback_only=false,capture_stdout=true,capture_stderr=true},function(ok,result)
+            if not ok or not result or result.status~=0 then mp.msg.warn('补帧准备日志暂未清理，将在下次启动时重试') end
+        end)
+        break
+    end
+end
