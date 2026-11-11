@@ -20,6 +20,49 @@ def wait_for(predicate):
     raise AssertionError('Timed out waiting for cache process')
 
 class EngineCacheTests(unittest.TestCase):
+    def test_bad_cached_engine_is_rebuilt_once_without_other_cache_loss(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with cache.engine_directory(tmp, 'runtime', OPTIONS, 425, build=True) as directory:
+                (directory / 'test.engine').write_bytes(b'broken')
+            with cache.engine_directory(tmp, 'runtime', OPTIONS, 4251, build=True) as directory:
+                (directory / 'test.engine').write_bytes(b'other-model')
+            attempts = []
+            def create(directory):
+                engine = directory / 'test.engine'
+                attempts.append(engine.exists())
+                if engine.exists():
+                    raise RuntimeError('engine cannot deserialize')
+                engine.write_bytes(b'rebuilt')
+            cache.prepare_engine(tmp, 'runtime', OPTIONS, 425, create)
+            self.assertEqual(attempts, [True, False])
+            with cache.engine_directory(tmp, 'runtime', OPTIONS, 4251) as directory:
+                self.assertEqual((directory / 'test.engine').read_bytes(), b'other-model')
+            with cache.engine_directory(tmp, 'runtime', OPTIONS, 425) as directory:
+                self.assertEqual((directory / 'test.engine').read_bytes(), b'rebuilt')
+
+    def test_rebuild_failure_does_not_loop_or_publish(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with cache.engine_directory(tmp, 'runtime', OPTIONS, 425, build=True) as directory:
+                (directory / 'test.engine').write_bytes(b'broken')
+            attempts = []
+            def fail(directory):
+                attempts.append(directory)
+                raise RuntimeError('GPU unavailable')
+            with self.assertRaisesRegex(RuntimeError, 'GPU unavailable'):
+                cache.prepare_engine(tmp, 'runtime', OPTIONS, 425, fail)
+            self.assertEqual(len(attempts), 2)
+            self.assertFalse(list(Path(tmp).rglob('complete.json')))
+
+    def test_incomplete_destination_is_replaced(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with cache.engine_directory(tmp, 'runtime', OPTIONS, 425, build=True) as directory:
+                (directory / 'test.engine').write_bytes(b'complete')
+            destination = next(Path(tmp).rglob('complete.json')).parent
+            (destination / 'complete.json').unlink()
+            with cache.engine_directory(tmp, 'runtime', OPTIONS, 425, build=True) as directory:
+                (directory / 'test.engine').write_bytes(b'rebuilt')
+            self.assertEqual((destination / 'test.engine').read_bytes(), b'rebuilt')
+
     def test_failed_build_is_not_published_and_can_retry(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(RuntimeError, 'inference failed'):

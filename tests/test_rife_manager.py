@@ -24,6 +24,8 @@ class ManagerTests(unittest.TestCase):
         state=self.render(False);self.assertFalse(state['installed']);self.assertEqual(state['primary'],'开始安装')
     def test_existing_install_with_unicode_path_opens_installed_view(self):
         state=self.render(True);self.assertTrue(state['installed']);self.assertEqual(state['primary'],'打开播放器');self.assertFalse(state['pause_visible'])
-    def test_old_runtime_offers_install_without_starting_download(self):
-        state=self.render(True,old_version=True);self.assertFalse(state['installed']);self.assertEqual(state['primary'],'开始安装')
+        self.assertTrue(state['uninstall_visible'])
+    def test_old_runtime_offers_update_without_starting_download(self):
+        state=self.render(True,old_version=True);self.assertFalse(state['installed']);self.assertEqual(state['primary'],'开始更新')
+        self.assertEqual(state['title'],'补帧组件需要更新');self.assertTrue(state['uninstall_visible'])
 if __name__=='__main__':unittest.main()

@@ -3,7 +3,7 @@
  [string]$ConfigDir=(Split-Path $PSScriptRoot -Parent),
  [string]$Mpv='',
  [string]$PreviewPath='',
- [ValidateSet('auto','initial','download','paused','installed','error')][string]$PreviewState='auto'
+ [ValidateSet('auto','initial','download','paused','installed','update','uninstalled','error')][string]$PreviewState='auto'
 )
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Windows.Forms
@@ -45,23 +45,27 @@ $primary.ForeColor=[Drawing.Color]::FromArgb(36,25,38);$primary.Text='开始安�
 $pause=New-Object Windows.Forms.Button;$pause.SetBounds(236,392,135,44);$pause.Text='暂停下载';$pause.Visible=$false;$form.Controls.Add($pause)
 $folder=New-Object Windows.Forms.Button;$folder.SetBounds(385,392,125,44);$folder.Text='打开文件夹';$folder.Visible=$false;$form.Controls.Add($folder)
 $details=New-Object Windows.Forms.Button;$details.SetBounds(524,392,123,44);$details.Text='查看详情';$form.Controls.Add($details)
+$uninstall=New-Object Windows.Forms.Button;$uninstall.SetBounds(236,392,135,44);$uninstall.Text='卸载补帧组件';$uninstall.Visible=$false;$form.Controls.Add($uninstall)
 $foot=Label '仅安装补帧所需组件，不更改现有画质设置。' 32 455 615 26
 $foot.Font=New-Object Drawing.Font('Microsoft YaHei UI',9);$foot.ForeColor=[Drawing.Color]::FromArgb(110,100,115)
 $script:worker=$null;$script:jobDir='';$script:busy=$false;$script:paused=$false;$script:closing=$false
 $script:lastPhase='initial';$script:lastError='';$script:installed=$false
+$script:operation='install'
 function Installed-Record {
  $file=Join-Path $Root 'active.json'
  if(Test-Path -LiteralPath $file){
   try{
    $record=Get-Content -LiteralPath $file -Raw -Encoding UTF8|ConvertFrom-Json
    $prefix=[IO.Path]::GetFullPath((Join-Path $Root 'runtime')).TrimEnd('\')+'\'
-   if($record.installed -and $record.id -eq $manifest.id -and [IO.Path]::GetFullPath($record.root).StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath (Join-Path $record.root 'runtime.json'))){return $record}
+   if($record.installed -and [IO.Path]::GetFullPath($record.root).StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath (Join-Path $record.root 'runtime.json'))){return $record}
   }catch{}
  }
  return $null
 }
 function Show-State($State,$Data){
  $script:lastPhase=$State
+ $script:installed=$false
+ $uninstall.Visible=(-not $script:busy) -and ($State -in @('installed','update') -or $null -ne (Installed-Record))
  $bar.Style='Continuous';$bar.Visible=$true;$primary.Enabled=-not $script:busy;$pause.Visible=$false;$folder.Visible=Test-Path -LiteralPath $Root
  switch($State){
   'initial'{
@@ -92,6 +96,16 @@ function Show-State($State,$Data){
    if(-not $Mpv){$primary.Enabled=$false;$detail.Text='请从播放器右键菜单打开此窗口，再点击“打开播放器”。'}
    if($Data -and $Data.installed_at){try{$detail.Text+='  安装于 '+([datetime]$Data.installed_at).ToLocalTime().ToString('yyyy-MM-dd HH:mm')}catch{}}
   }
+  'update'{
+   $title.Text='补帧组件需要更新';$subtitle.Text='已安装的组件与当前播放器配置不匹配，更新后可继续使用 AI 补帧。'
+   $summary.Text=('本次需检查并下载约 {0:N2} GiB · 请预留至少 12 GiB 空间' -f ($total/1GB))
+   $phaseLabel.Text='等待更新';$detail.Text='点击“开始更新”后才会下载；可复用的下载文件会保留。';$primary.Text='开始更新';$bar.Value=0
+  }
+  'uninstalled'{
+   $title.Text='补帧组件已卸载';$subtitle.Text='已移除补帧环境、模型、缓存和下载文件。播放器配置已保留。'
+   $summary.Text=('重新安装需下载约 {0:N2} GiB · 请预留至少 12 GiB 空间' -f ($total/1GB))
+   $bar.Visible=$false;$phaseLabel.Text='卸载完成';$detail.Text='需要使用 AI 补帧时，可在这里重新安装。';$primary.Text='重新安装'
+  }
   'error'{
    $title.Text='安装未完成';$subtitle.Text='已下载的内容会保留，可以稍后重试。';$phaseLabel.Text='需要重试';$detail.Text='请检查网络连接和剩余空间。具体原因可在“查看详情”中查看。';$primary.Text='重试安装';$bar.Value=0
   }
@@ -115,7 +129,15 @@ $timer.Add_Tick({
  if($script:worker.HasExited){
   $script:worker.WaitForExit();$code=$script:worker.ExitCode;$script:worker.Dispose();$script:worker=$null;$script:busy=$false
   $record=Installed-Record
-  if($code -eq 0 -and $record){Show-State 'installed' $record}
+  if($script:operation -eq 'uninstall'){
+   if($code -eq 0){Show-State 'uninstalled' $null}else{
+    if($record){if($record.id -eq $manifest.id){Show-State 'installed' $record}else{Show-State 'update' $record}}else{Show-State 'initial' $null}
+    $script:lastError=Get-Content -LiteralPath (Join-Path $script:jobDir 'error.log') -Raw -ErrorAction SilentlyContinue
+    $detail.Text='卸载未完成。请关闭使用补帧组件的播放器后重试；仍无法卸载时可查看详情。'
+   }
+   $folder.Enabled=$true;$timer.Stop();return
+  }
+  if($code -eq 0 -and $record -and $record.id -eq $manifest.id){Show-State 'installed' $record}
   elseif($script:closing -or (Test-Path -LiteralPath (Join-Path $script:jobDir 'cancel'))){Show-State 'cancelled' $null}
   else{Show-State 'error' $null}
   if($script:closing){$form.Close()}
@@ -135,6 +157,7 @@ $primary.Add_Click({
   [IO.Directory]::CreateDirectory($Root)|Out-Null
   $script:jobDir=Join-Path $Root ('jobs/'+[guid]::NewGuid().ToString('N'));[IO.Directory]::CreateDirectory($script:jobDir)|Out-Null
   $script:paused=$false;$script:lastError='';$script:closing=$false
+  $script:operation='install'
   $arguments=@('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',('"'+(Join-Path $PSScriptRoot 'runtime.ps1')+'"'),'-Action','Install','-Confirmed','-Root',('"'+$Root+'"'),'-CancelFile',('"'+(Join-Path $script:jobDir 'cancel')+'"'),'-PauseFile',('"'+(Join-Path $script:jobDir 'pause')+'"'),'-ProgressFile',('"'+(Join-Path $script:jobDir 'progress.json')+'"'))
   $script:worker=Start-Process -FilePath 'powershell.exe' -ArgumentList $arguments -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:jobDir 'output.log') -RedirectStandardError (Join-Path $script:jobDir 'error.log')
   $null=$script:worker.Handle
@@ -152,6 +175,28 @@ $pause.Add_Click({
  }
 })
 $folder.Add_Click({if(Test-Path -LiteralPath $Root){Start-Process -FilePath explorer.exe -ArgumentList ('"'+$Root+'"')}})
+$uninstall.Add_Click({
+ if($script:busy){return}
+ $answer=[Windows.Forms.MessageBox]::Show("卸载将移除补帧环境、模型、缓存和已下载的组件包。播放器配置会保留，需要时可重新安装。`r`n`r`n请先关闭使用补帧组件的播放器。是否继续卸载？",'卸载补帧组件','YesNo','Question')
+ if($answer -ne 'Yes'){return}
+ try{
+  # Worker logs must live outside the directory it removes.
+  $script:jobDir=Join-Path ([IO.Path]::GetTempPath()) ('mpv-rife-uninstall-'+[guid]::NewGuid().ToString('N'))
+  [IO.Directory]::CreateDirectory($script:jobDir)|Out-Null
+  $arguments=@('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',('"'+(Join-Path $PSScriptRoot 'runtime.ps1')+'"'),'-Action','Uninstall','-Confirmed','-Root',('"'+$Root+'"'),'-ConfigDir',('"'+$ConfigDir+'"'))
+  $script:worker=Start-Process -FilePath 'powershell.exe' -ArgumentList $arguments -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:jobDir 'output.log') -RedirectStandardError (Join-Path $script:jobDir 'error.log')
+  $null=$script:worker.Handle
+  $script:operation='uninstall';$script:busy=$true;$script:lastError=''
+  $primary.Enabled=$false;$uninstall.Visible=$false;$folder.Enabled=$false
+  $title.Text='正在卸载补帧组件';$subtitle.Text='正在清理补帧组件，请保持窗口打开。';$phaseLabel.Text='正在卸载';$detail.Text='播放器配置会保留。';$bar.Visible=$true;$bar.Style='Marquee';$timer.Start()
+ }catch{
+  $script:busy=$false;$script:lastError=$_.Exception.Message
+  $record=Installed-Record
+  if($record){if($record.id -eq $manifest.id){Show-State 'installed' $record}else{Show-State 'update' $record}}else{Show-State 'initial' $null}
+  $detail.Text='卸载未完成。请关闭使用补帧组件的播放器后重试；仍无法卸载时可查看详情。'
+  [Windows.Forms.MessageBox]::Show('暂时无法完成卸载。请关闭使用补帧组件的播放器后重试；若仍失败，请查看详情。','AI 补帧','OK','Warning')|Out-Null
+ }
+})
 $details.Add_Click({
  $message='安装位置：'+$Root+"`r`n组件版本："+$manifest.id+"`r`n"
  if($script:lastError){$message+="`r`n错误详情："+$script:lastError}
@@ -160,6 +205,7 @@ $details.Add_Click({
  [Windows.Forms.MessageBox]::Show($message,'AI 补帧 · 详情','OK','Information')|Out-Null
 })
 $form.Add_FormClosing({param($sender,$event)
+ if($script:busy -and $script:operation -eq 'uninstall'){$event.Cancel=$true;return}
  if($script:busy -and -not $script:closing){
   $answer=[Windows.Forms.MessageBox]::Show('安装尚未完成。关闭窗口会停止安装并保留已下载内容，下次可以继续。是否退出安装？','AI 补帧','YesNo','Question')
   $event.Cancel=$true
@@ -174,7 +220,7 @@ $form.Add_Shown({$form.ActiveControl=$primary;$pathBox.SelectionLength=0})
 $form.Add_FormClosed({$timer.Stop();$timer.Dispose()})
 try{
  $record=Installed-Record
- if($record){Show-State 'installed' $record}else{Show-State 'initial' $null}
+ if($record){if($record.id -eq $manifest.id){Show-State 'installed' $record}else{Show-State 'update' $record}}else{Show-State 'initial' $null}
  if($PreviewPath){
   $fake=@{overall=($total*.42);total=$total;installed_at='2026-11-06T08:00:00Z'}
   if($PreviewState -ne 'auto'){$script:busy=$PreviewState -in @('download','paused');Show-State $PreviewState $fake}
@@ -184,7 +230,7 @@ try{
   $rectangle=New-Object Drawing.Rectangle(0,0,$form.Width,$form.Height)
   $form.DrawToBitmap($image,$rectangle)
   $image.Save($PreviewPath,[Drawing.Imaging.ImageFormat]::Png);$image.Dispose()
-  @{title=$title.Text;primary=$primary.Text;pause=$pause.Text;pause_visible=$pause.Visible;installed=$script:installed} | ConvertTo-Json | Set-Content -LiteralPath ($PreviewPath+'.json') -Encoding UTF8
+  @{title=$title.Text;primary=$primary.Text;pause=$pause.Text;pause_visible=$pause.Visible;installed=$script:installed;uninstall_visible=$uninstall.Visible} | ConvertTo-Json | Set-Content -LiteralPath ($PreviewPath+'.json') -Encoding UTF8
   $script:busy=$false;$form.Close()
  }else{[void]$form.ShowDialog()}
 }finally{if($created){$mutex.ReleaseMutex()};$mutex.Dispose();$form.Dispose()}

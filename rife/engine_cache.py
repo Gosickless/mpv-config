@@ -10,6 +10,25 @@ import shutil
 import tempfile
 import time
 
+class CachedEngineError(RuntimeError):
+    """An existing cache failed its real-frame check and has been discarded."""
+
+def _discard(directory):
+    if directory.is_symlink() or directory.is_junction():
+        raise RuntimeError('补帧缓存目录异常，请检查组件安装目录')
+    if directory.exists():
+        shutil.rmtree(directory)
+
+def prepare_engine(root, runtime_id, options, model, create):
+    # Only a failed reused engine gets one fresh attempt. New-build failures
+    # propagate immediately, including the second failure, without a retry loop.
+    try:
+        with engine_directory(root, runtime_id, options, model, build=True) as directory:
+            create(directory)
+    except CachedEngineError:
+        with engine_directory(root, runtime_id, options, model, build=True) as directory:
+            create(directory)
+
 @contextmanager
 def engine_directory(root, runtime_id, options, model, build=False):
     # The GPU identity includes its UUID and driver; runtime_id pins the libraries.
@@ -37,10 +56,16 @@ def engine_directory(root, runtime_id, options, model, build=False):
                 if abandoned.is_dir() and not abandoned.is_symlink() and abandoned.resolve().is_relative_to(base.resolve()):
                     shutil.rmtree(abandoned)
             if (destination / 'complete.json').is_file():
-                yield destination
+                try:
+                    yield destination
+                except Exception as exc:
+                    _discard(destination)
+                    raise CachedEngineError('补帧缓存无法使用，已清理，可重新准备') from exc
             elif not build:
                 raise RuntimeError('引擎尚未准备完成，请重新开启补帧')
             else:
+                # A missing completion marker must not block atomic rename.
+                _discard(destination)
                 with tempfile.TemporaryDirectory(prefix=key + '-', dir=base) as temporary:
                     working = Path(temporary)
                     yield working

@@ -1,5 +1,5 @@
 ﻿param(
- [ValidateSet('Install','Launch','Probe','Prepare','Plan')][string]$Action='Probe',
+ [ValidateSet('Install','Uninstall','Launch','Probe','Prepare','Plan')][string]$Action='Probe',
  [string]$Root=(Join-Path $env:LOCALAPPDATA 'mpv-rife'),
  [string]$ConfigDir=(Split-Path $PSScriptRoot -Parent),
  [string]$Mpv='', [string]$CancelFile='', [string]$Request='',
@@ -132,6 +132,13 @@ function Download-Checked($Asset,$Directory){
 
 try{
  $Root=[IO.Path]::GetFullPath($Root)
+ if($Action -eq 'Uninstall'){
+  if(-not $Confirmed){throw 'Uninstall requires confirmation in the component manager'}
+  . (Join-Path $PSScriptRoot 'maintenance.ps1')
+  Remove-RifeComponents $Root $ConfigDir
+  Write-Output 'Uninstalled'
+  exit 0
+ }
  if($Action -eq 'Plan'){
   $manifest=Read-Json (Join-Path $PSScriptRoot 'runtime-lock.json')
   @{root=$Root;id=$manifest.id;bytes=($manifest.assets|Measure-Object size -Sum).Sum;experimental=$true;assets=$manifest.assets} | ConvertTo-Json -Depth 6
@@ -246,7 +253,7 @@ print(vs.__version__, vsmlrt.__version__)
  }
 }catch{
  Write-Error $_ -ErrorAction Continue
- if(Test-Path -LiteralPath $Root){
+ if($Action -ne 'Uninstall' -and (Test-Path -LiteralPath $Root)){
   $phase=if($_.Exception.Message -eq 'Cancelled'){'cancelled'}else{'error'}
   Publish @{phase=$phase;message=$_.Exception.Message}
  }

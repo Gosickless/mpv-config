@@ -43,7 +43,7 @@ local function update_menu()
             end
             if type(item.title)=='string' and item.title:match('^补帧组件：') then
                 local installed=read_json(utils.join_path(root,'active.json'))
-                local title='补帧组件：'..(current_install(installed) and '已安装' or '未安装')
+                local title='补帧组件：'..(current_install(installed) and '已安装' or (installed and installed.installed and '需要更新' or '未安装'))
                 if item.title~=title then item.title=title;changed=true end
             end
             if type(item.title)=='string' and item.title:match('^AI补帧：') then
