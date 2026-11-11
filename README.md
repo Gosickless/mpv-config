@@ -118,9 +118,11 @@ git push
 
 上传流程参考 [GitHub 官方文档：将本地代码添加到 GitHub](https://docs.github.com/en/migrations/importing-source-code/using-the-command-line-to-import-source-code/adding-locally-hosted-code-to-github)。
 
-## 第三方内容
+## 许可证与第三方内容
 
-仓库包含第三方脚本、字体和着色器。请保留文件中的作者、来源及许可声明；具体使用和再分发条件以各组件原有许可为准。
+本项目原创的配置、脚本、文档和测试代码采用 [MIT 许可证](LICENSE)，版权署名为 `Gosickless`。
+
+第三方脚本、着色器、字体，以及按需下载的模型和运行库，继续遵循各自许可证，不因根目录的 MIT 许可证而变更。请保留相关文件、目录及下载包中的作者、来源和许可声明；对第三方内容的修改或衍生作品也须遵守其适用条款。着色器目录中的 [GPL-3.0](shaders/LICENSE.GPL-3.0.txt) 和 [LGPL-3.0](shaders/LICENSE.LGPL-3.0.txt) 许可文件继续保留，具体适用范围以各组件声明为准。
 
 ## 统一画质预设
 
