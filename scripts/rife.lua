@@ -12,10 +12,12 @@ local requested, active, busy = false, false, false
 local generation, phase, reason = 0, '关闭', ''
 local job, cancel_file
 local manager_job
+local activate_runtime
 local expected_fps, measured_fps, output_timer
 local stable_samples=0
+local announced=false
+local slow_samples,settle_until=0,0
 local model_names={lite='轻量',standard='均衡',heavy='高画质'}
-local function normalize(p) return (p or ''):gsub('\\','/'):gsub('/+$',''):lower() end
 local function notify(s) mp.osd_message(s, 5); mp.msg.info(s) end
 local function read_json(path)
     local f=io.open(path,'rb'); if not f then return nil end
@@ -70,7 +72,7 @@ local function cancel_prepare()
     if cancel_file then local f=io.open(cancel_file,'w');if f then f:write('cancel');f:close() end end
 end
 local function off()
-    generation=generation+1;requested=false;cancel_prepare();remove_filter();state('关闭')
+    generation=generation+1;requested=false;announced=false;cancel_prepare();remove_filter();state('关闭')
     notify('AI 补帧已关闭')
 end
 local function helper_args(action)
@@ -127,13 +129,14 @@ local function quoted(s) return '%'..#s..'%'..s end
 local function attach(token,params)
     if token~=generation or not requested then return end
     local payload=utils.format_json(params)
-    local filter='@'..tag..':vapoursynth=file='..quoted(bridge)..':user-data='..quoted(payload)..':buffered-frames=4:concurrent-frames=1'
+    local filter='@'..tag..':vapoursynth=file='..quoted(bridge)..':user-data='..quoted(payload)..':buffered-frames=16:concurrent-frames=4'
     state('正在准备')
     local _,err=mp.command_native({'vf','add',filter})
     if err or not has_filter() then mp.msg.error(tostring(err));fail('暂时无法启用补帧，请重新打开视频后重试');return end
     if token~=generation or not requested then remove_filter();return end
     active=has_filter()
     expected_fps=params.output_fps;stable_samples=0
+    slow_samples=0;settle_until=mp.get_time()+3
     state(active and (mp.get_property_bool('pause') and '已暂停' or '正在启动') or '不可用',active and '' or '补帧未能启动')
     if output_timer then output_timer:kill();output_timer=nil end
     if active then
@@ -143,11 +146,24 @@ local function attach(token,params)
             local position=mp.get_property_number('time-pos')
             if mp.get_property_bool('pause') or mp.get_property_bool('seeking') then previous_position=position;return end
             measured_fps=mp.get_property_number('estimated-vf-fps')
-            if position and previous_position and position>previous_position and measured_fps and expected_fps and math.abs(measured_fps-expected_fps)/expected_fps<.05 then
+            local sync=mp.get_property_number('avsync',0)
+            if mp.get_time()>=settle_until and math.abs(sync)>.25 then slow_samples=slow_samples+1 else slow_samples=0 end
+            if slow_samples>=3 then
+                local audio_position=mp.get_property_number('audio-pts')
+                requested=false;generation=generation+1;remove_filter()
+                state('性能不足，已关闭','请降低输出帧率或选择更轻量的画质')
+                if audio_position then mp.commandv('seek',tostring(audio_position),'absolute+exact') end
+                notify('补帧速度不足，已恢复原画播放；请降低帧率或画质')
+                return
+            end
+            if math.abs(sync)<.1 and position and previous_position and position>previous_position and measured_fps and expected_fps and math.abs(measured_fps-expected_fps)/expected_fps<.05 then
                 stable_samples=stable_samples+1
             else stable_samples=0 end
             previous_position=position
-            if stable_samples>=3 and phase~='开启' then state('开启');notify('AI 补帧已开启') end
+            if stable_samples>=3 and phase~='开启' then
+                state('开启')
+                if not announced then announced=true;notify('AI 补帧已开启') end
+            end
         end)
     end
 end
@@ -157,7 +173,6 @@ enable=function()
     local installed=read_json(utils.join_path(root,'active.json'))
     if not current_install(installed) then install();return end
     local params,err=input_options();if not params then fail(err);return end
-    if not os.getenv('VSSCRIPT_PATH') or normalize(os.getenv('MPV_RIFE_ROOT'))~=normalize(root) then install();notify('请在组件管理中点击“打开播放器”，然后开启补帧');return end
     requested=true;generation=generation+1;local token=generation
     busy=true;state('正在检查')
     job=mp.command_native_async({name='subprocess',args=helper_args('Probe'),playback_only=false,capture_stdout=true,capture_stderr=true},function(success,result)
@@ -167,6 +182,18 @@ enable=function()
         for line in ((result and result.stdout) or ''):gmatch('[^\r\n]+') do local p=utils.parse_json(line);if p then result_json=p end end
         if not success or not result or result.status~=0 or not result_json or not result_json.ok then
             mp.msg.error(result_json and result_json.error or 'runtime probe failed');fail('补帧组件暂时不可用，请确认显卡驱动已更新');return
+        end
+        local configured,configure_error=pcall(function()
+            if not activate_runtime then activate_runtime=dofile(utils.join_path(config,'rife/environment.lua')) end
+            activate_runtime(result_json.activation)
+        end)
+        if not configured then
+            local detail=tostring(configure_error)
+            mp.msg.error(detail)
+            local message='补帧组件暂时无法加载，请在组件管理中检查安装状态'
+            if detail:find('组件版本已变化',1,true) then message='补帧组件已更新，请重启当前播放器一次'
+            elseif detail:find("module 'ffi'",1,true) then message='当前播放器需要带LuaJIT的mpv才能直接加载补帧组件' end
+            fail(message);return
         end
         params.gpu=result_json.gpu
         -- Build on a separate process, not inside mpv's render thread.
@@ -219,7 +246,7 @@ mp.register_script_message('launch',function()
         if not ok or not result or result.status~=0 then notify('暂时无法打开播放器，请在组件管理中检查安装状态') end
     end)
 end)
-mp.register_event('start-file',function() generation=generation+1;cancel_prepare();active=false;expected_fps=nil;measured_fps=nil;stable_samples=0;if requested then state('等待视频') end end)
+mp.register_event('start-file',function() generation=generation+1;announced=false;cancel_prepare();active=false;expected_fps=nil;measured_fps=nil;stable_samples=0;if requested then state('等待视频') end end)
 mp.register_event('file-loaded',function() if requested then enable() end end)
 mp.register_event('end-file',function(event)
     generation=generation+1;remove_filter()
@@ -230,6 +257,7 @@ local function change_setting(key,value)
     if key=='target_fps' then value=tonumber(value);if not value or value%1~=0 or value~=0 and (value<24 or value>360) then return end end
     local resume=requested
     generation=generation+1;cancel_prepare();remove_filter();options[key]=value
+    announced=false
     update_menu()
     if resume then if not busy then enable() else state('正在准备') end else state('关闭') end
 end
@@ -240,6 +268,7 @@ mp.observe_property('estimated-vf-fps','number',function(_,fps)
 end)
 mp.observe_property('pause','bool',function(_,paused)
     if not active then return end
+    slow_samples=0;settle_until=mp.get_time()+3
     if paused then state('已暂停') else stable_samples=0;state('正在恢复') end
 end)
 mp.observe_property('speed','number',function(_,speed)
@@ -250,6 +279,7 @@ end)
 mp.register_event('seek',function()
     if not requested then return end
     stable_samples=0;measured_fps=nil
+    slow_samples=0;settle_until=mp.get_time()+3
     if busy then generation=generation+1;cancel_prepare() end
     if active then state('正在恢复') end
 end)

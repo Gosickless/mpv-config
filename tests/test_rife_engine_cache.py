@@ -1,5 +1,7 @@
 """Exercise atomic publication, failure and cancellation with real processes."""
 import importlib.util
+import hashlib
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -20,6 +22,14 @@ def wait_for(predicate):
     raise AssertionError('Timed out waiting for cache process')
 
 class EngineCacheTests(unittest.TestCase):
+    def test_unsafe_variant_fp16_engines_are_not_reused(self):
+        for model in [425,4251,4252]:
+            legacy=hashlib.sha256(json.dumps([OPTIONS['gpu'],1920,1080,model,'fp16-v2'],ensure_ascii=True).encode()).hexdigest()[:24]
+            if model==425:
+                self.assertEqual(cache._engine_key(OPTIONS,model),legacy)
+            else:
+                self.assertNotEqual(cache._engine_key(OPTIONS,model),legacy)
+
     def test_bad_cached_engine_is_rebuilt_once_without_other_cache_loss(self):
         with tempfile.TemporaryDirectory() as tmp:
             with cache.engine_directory(tmp, 'runtime', OPTIONS, 425, build=True) as directory:

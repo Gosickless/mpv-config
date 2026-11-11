@@ -43,6 +43,10 @@ def probe(root):
     vs, handles, runtime, layout = load_runtime(root)
     import vsmlrt
     return {'ok': True, 'gpu': gpu, 'runtime': str(runtime),
+            'activation': {'runtime': str(runtime), 'python': str(runtime / 'python313.dll'),
+                           'vsscript': str(runtime / layout['vsscript']),
+                           'pythonpath': str(runtime / 'Lib/site-packages'),
+                           'directories': [str(runtime)] + [str(p) for p in sorted({p.parent for p in runtime.rglob('*.dll')})]},
             'vapoursynth': str(vs.__version__), 'vsmlrt': vsmlrt.__version__,
             'inference_verified': False, 'hdr_verified': False}
 

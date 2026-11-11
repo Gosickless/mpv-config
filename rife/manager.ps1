@@ -91,9 +91,8 @@ function Show-State($State,$Data){
    $title.Text='正在安装补帧组件';$subtitle.Text='下载已完成，正在解压并配置组件。';$phaseLabel.Text='正在安装';$detail.Text='此步骤不能暂停，安装窗口可以保持打开。';$bar.Style='Marquee';$primary.Text='安装中'
   }
   'installed'{
-   $script:installed=$true;$title.Text='AI 补帧组件已安装';$subtitle.Text='组件已准备好。打开播放器后，可从右键菜单开启 AI 补帧。'
-   $bar.Visible=$false;$summary.Text='安装状态：已安装';$phaseLabel.Text='安装完成';$detail.Text='使用下方按钮打开播放器以应用组件。';$bar.Value=1000;$primary.Text='打开播放器'
-   if(-not $Mpv){$primary.Enabled=$false;$detail.Text='请从播放器右键菜单打开此窗口，再点击“打开播放器”。'}
+   $script:installed=$true;$title.Text='AI 补帧组件已安装';$subtitle.Text='组件已准备好，可返回当前播放器开启 AI 补帧。'
+   $bar.Visible=$false;$summary.Text='安装状态：已安装';$phaseLabel.Text='安装完成';$detail.Text='关闭此窗口，在当前播放器右键菜单中开启补帧即可。';$bar.Value=1000;$primary.Text='返回播放器'
    if($Data -and $Data.installed_at){try{$detail.Text+='  安装于 '+([datetime]$Data.installed_at).ToLocalTime().ToString('yyyy-MM-dd HH:mm')}catch{}}
   }
   'update'{
@@ -146,11 +145,7 @@ $timer.Add_Tick({
 $primary.Add_Click({
  if($script:busy){return}
  if($script:installed){
-  try{
-   & (Join-Path $PSScriptRoot 'runtime.ps1') -Action Launch -Root $Root -ConfigDir $ConfigDir -Mpv $Mpv
-   if($LASTEXITCODE -ne 0){throw 'Launch failed'}
-   $detail.Text='播放器已在新窗口打开。可在右键菜单中开启 AI 补帧。'
-  }catch{[Windows.Forms.MessageBox]::Show('暂时无法打开播放器。请确认播放器仍位于原来的位置，或查看详情。','AI 补帧','OK','Warning')|Out-Null;$script:lastError=$_.Exception.Message}
+  $form.Close()
   return
  }
  try{
@@ -201,7 +196,6 @@ $details.Add_Click({
  $message='安装位置：'+$Root+"`r`n组件版本："+$manifest.id+"`r`n"
  if($script:lastError){$message+="`r`n错误详情："+$script:lastError}
  if($script:jobDir){$message+="`r`n安装日志："+$script:jobDir}
- $message+="`r`n`r`n组件安装完成不代表所有视频都适用；具体支持范围见使用说明。"
  [Windows.Forms.MessageBox]::Show($message,'AI 补帧 · 详情','OK','Information')|Out-Null
 })
 $form.Add_FormClosing({param($sender,$event)

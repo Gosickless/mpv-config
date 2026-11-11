@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from policy import validate
 from probe import load_runtime, gpu_identity
 from engine_cache import prepare_engine
-from settings import selection
+from settings import selection, backend_options
 
 def prepare(root, request):
     options = json.loads(Path(request).read_text(encoding='utf-8-sig'))
@@ -19,7 +19,7 @@ def prepare(root, request):
     clip = vs.core.std.BlankClip(width=w,height=h,length=3,format=vs.RGBS,
                                  fpsnum=fps.numerator,fpsden=fps.denominator)
     def create(cache):
-        backend = Backend.TRT(fp16=True,num_streams=1,use_cuda_graph=False,
+        backend = Backend.TRT(**backend_options(model),
                               engine_folder=str(cache),short_path=True)
         result = RIFE(clip,multi=factor,model=RIFEModel(model),backend=backend,video_player=True,_implementation=2)
         result.get_frame(1)

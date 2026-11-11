@@ -17,5 +17,11 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings.selection({'model':name},Fraction(24))[0],model)
         for option in [{'model':'unknown'},{'target_fps':True},{'target_fps':12},{'target_fps':60.5}]:
             with self.assertRaises(ValueError):settings.selection(option,Fraction(24))
+    def test_variants_retain_fp32_range(self):
+        for model in [4251,4252]:
+            backend=settings.backend_options(model)
+            self.assertFalse(backend['fp16'])
+            self.assertTrue(backend['tf32'])
+        self.assertTrue(settings.backend_options(425)['fp16'])
 
 if __name__=='__main__':unittest.main()

@@ -1,6 +1,12 @@
 """Shared model and rational frame-rate policy for preparation and playback."""
 from fractions import Fraction
 MODELS = {"lite": 4251, "standard": 425, "heavy": 4252}
+
+def backend_options(model):
+    # Lite/heavy 4.25 produce non-finite RGB values in FP16 on actual video.
+    # TF32 retains FP32's exponent range while allowing Tensor Core acceleration.
+    return dict(fp16=model == MODELS['standard'], tf32=model != MODELS['standard'],
+                num_streams=2, use_cuda_graph=True)
 def selection(options, fps):
     name = options.get("model", "standard")
     if name not in MODELS:

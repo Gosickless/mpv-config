@@ -5,9 +5,9 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from policy import validate
-from settings import selection
+from settings import selection, backend_options
 from probe import load_runtime
-from engine_cache import engine_directory
+from engine_cache import engine_directory, retain_engine
 
 options = json.loads(user_data)
 w, h, fps, hdr = validate(options)
@@ -53,9 +53,15 @@ def mark_cut(n, f):
     return image
 rgb = core.std.ModifyFrame(rgb, clips=[rgb, stats], selector=mark_cut)
 with engine_directory(options['root'], layout['id'], options, model) as cache:
-    backend = Backend.TRT(fp16=True, num_streams=1, use_cuda_graph=False,
+    backend = Backend.TRT(**backend_options(model),
                           engine_folder=str(cache), short_path=True)
     result = RIFE(rgb, multi=factor, model=RIFEModel(model), backend=backend, video_player=True, _implementation=2)
+    usage = retain_engine(cache)
+    try:
+        vs.register_on_destroy(usage.close)
+    except BaseException:
+        usage.close()
+        raise
 result = core.resize.Bicubic(result, format=vs.YUV420P10, matrix=matrix, range=range_value)
 # Standard mpv restores its native image attributes from this opaque property.
 # Carry it from the corresponding original frame; never parse its binary layout.
