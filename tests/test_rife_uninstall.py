@@ -21,7 +21,7 @@ class UninstallTests(unittest.TestCase):
     def fixture(self, base):
         root = base / '补帧组件'; config = base / 'player-config'
         config.mkdir(); (config / 'mpv.conf').write_text('keep-me')
-        for name in ['runtime/old', 'runtime/current', 'cache/key', 'downloads', 'staging', 'jobs']:
+        for name in ['runtime/old', 'runtime/current', 'cache/key', 'downloads', 'staging', 'jobs', 'logs']:
             folder = root / name; folder.mkdir(parents=True)
             (folder / '[test].bin').write_bytes(b'test')
         (root / 'active.json').write_text(json.dumps({'installed': True}))

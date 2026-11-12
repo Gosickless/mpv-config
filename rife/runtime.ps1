@@ -43,11 +43,14 @@ function Clear-PrepareLogs {
  try{$lease=[IO.File]::Open($lockPath,'OpenOrCreate','ReadWrite','None')}
  catch [IO.IOException]{return} # Another player is still preparing, or installation is busy.
  try{
-  foreach($item in (Get-ChildItem -LiteralPath $Root -File -Force)){
-   if($item.Name -notmatch '^prepare-[0-9a-f]{32}\.jsonl(\.stderr)?$' -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){continue}
-   try{Remove-Item -LiteralPath $item.FullName -ErrorAction Stop}
-   catch [IO.IOException]{} # Also tolerate files held by an older preparation process.
-   catch [UnauthorizedAccessException]{}
+  foreach($directory in @($Root,(Join-Path $Root 'logs'))){
+   if(-not [IO.Directory]::Exists($directory) -or ((Get-Item -LiteralPath $directory -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){continue}
+   foreach($item in (Get-ChildItem -LiteralPath $directory -File -Force)){
+    if($item.Name -notmatch '^prepare-[0-9a-f]{32}\.jsonl(\.stderr)?$' -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){continue}
+    try{Remove-Item -LiteralPath $item.FullName -ErrorAction Stop}
+    catch [IO.IOException]{} # Also tolerate files held by an older preparation process.
+    catch [UnauthorizedAccessException]{}
+   }
   }
  }finally{$lease.Dispose()}
 }
@@ -252,7 +255,10 @@ print(vs.__version__, vsmlrt.__version__)
    if(-not $Request -or -not (Test-Path -LiteralPath $Request)){throw 'Missing request JSON'}
    $logLease=Open-PrepareLogLease
    try{
-   $output=Join-Path $Root ('prepare-'+[guid]::NewGuid().ToString('N')+'.jsonl')
+   $logs=Join-Path $Root 'logs'
+   [IO.Directory]::CreateDirectory($logs)|Out-Null
+   if((Get-Item -LiteralPath $logs -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Linked preparation log directory is not supported'}
+   $output=Join-Path $logs ('prepare-'+[guid]::NewGuid().ToString('N')+'.jsonl')
    $stderr=$output+'.stderr'
    $arguments=@(('"'+(Join-Path $PSScriptRoot 'prepare.py')+'"'),'--root',('"'+$Root+'"'),'--request',('"'+$Request+'"'))
    $child=Start-Process -FilePath (Join-Path $runtime 'python.exe') -ArgumentList $arguments -PassThru -WindowStyle Hidden -RedirectStandardOutput $output -RedirectStandardError $stderr

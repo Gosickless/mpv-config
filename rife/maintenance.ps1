@@ -16,7 +16,7 @@ function Get-RifeRemovalItems($Root,$ConfigDir){
  foreach($item in @(Get-ChildItem -LiteralPath $resolved -Force)){
   if($item.Name -eq 'install.lock'){continue}
   if($item.PSIsContainer){
-   if($item.Name -notin @('runtime','cache','downloads','staging','jobs')){throw ('Unknown directory in component root: '+$item.Name)}
+   if($item.Name -notin @('runtime','cache','downloads','staging','jobs','logs')){throw ('Unknown directory in component root: '+$item.Name)}
   }elseif($item.Name -notin @('active.json','progress.json') -and $item.Name -notmatch '^(prepare-[0-9a-f]{32}\.jsonl(\.stderr)?|request-[0-9]+-[0-9]+\.json)$'){
    throw ('Unknown file in component root: '+$item.Name)
   }
